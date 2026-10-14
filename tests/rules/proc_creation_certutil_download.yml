@@ -1,0 +1,18 @@
+title: Suspicious Download Via Certutil.EXE
+id: 19b08b1c-861d-4e75-a1ef-ea0c1baf202b
+status: test
+level: medium
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_img:
+        - Image|endswith: '\certutil.exe'
+        - OriginalFileName: 'CertUtil.exe'
+    selection_flags:
+        CommandLine|contains:
+            - 'urlcache '
+            - 'verifyctl '
+    selection_http:
+        CommandLine|contains: 'http'
+    condition: all of selection_*

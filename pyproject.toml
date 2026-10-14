@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sigma2leql"
+version = "0.1.0"
+description = "Convert Sigma rules to Rapid7 InsightIDR LEQL queries, with extended log source support"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+dependencies = [
+    # pySigma-backend-insightidr 0.2.4 is the latest release and requires pySigma < 0.12.
+    "pysigma>=0.11,<0.12",
+    "pysigma-backend-insightidr==0.2.4",
+    # pySigma 0.11's condition parser breaks on pyparsing >= 3.2 ("'str' object is not callable").
+    "pyparsing>=3.0,<3.2",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+sigma2leql = "sigma2leql.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+sigma2leql = ["sources.yml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

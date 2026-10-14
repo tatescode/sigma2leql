@@ -1,0 +1,16 @@
+title: Run Key Persistence From Temp Directory
+id: 00000000-0000-4000-8000-000000000001
+status: experimental
+level: high
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        TargetObject|contains: '\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+        Details|contains:
+            - '\AppData\Local\Temp\'
+            - '\Windows\Temp\'
+    filter_installer:
+        Image|endswith: '\msiexec.exe'
+    condition: selection and not filter_installer

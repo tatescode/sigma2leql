@@ -1,4 +1,5 @@
 # sigma2leql
+
 Convert [Sigma](https://github.com/SigmaHQ/sigma) detection rules into Rapid7 InsightIDR **LEQL** queries.
 
 `sigma2leql` builds on [pySigma](https://github.com/SigmaHQ/pySigma) and the official
@@ -22,7 +23,7 @@ Requires Python 3.9+.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install "git+https://github.com/<>/sigma2leql.git"
+pip install "git+https://github.com/tatescode/sigma2leql.git"
 # or, from a clone:
 pip install -e ".[dev]"
 ```
@@ -182,3 +183,10 @@ git clone --depth 1 https://github.com/SigmaHQ/sigma.git /tmp/sigma
 sigma2leql convert /tmp/sigma/rules -o /tmp/out --report /tmp/report.csv > /dev/null
 ```
 
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+This project depends on, but does not include or modify, [pySigma](https://github.com/SigmaHQ/pySigma)
+and [pySigma-backend-insightidr](https://github.com/SigmaHQ/pySigma-backend-insightidr). Both are
+licensed under LGPL-2.1, and their licenses apply to those packages when installed.

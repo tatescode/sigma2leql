@@ -1,0 +1,358 @@
+# Log source definitions: how a Sigma logsource maps onto an InsightIDR event type.
+#
+# Each entry:
+#   id:          unique name (also used to override/disable a built-in from a user file)
+#   logsource:   list of Sigma logsource matchers ({product, category, service}); any may match
+#   entry_type:  InsightIDR event type (see https://docs.rapid7.com/insightidr/keys-to-use-in-your-queries/)
+#   log_set:     InsightIDR log set name to search in Log Search
+#   fields:      explicit Sigma field -> LEQL key mapping
+#   prefix + passthrough:
+#                Sigma fields kept by name and prefixed (e.g. Image -> event.EventData.Data.Image)
+#   conditions:  extra LEQL key/value constraints ANDed onto every query (values or lists)
+#   values:      per Sigma field, exact-value translation (e.g. firewall "drop" -> "DENY")
+#   status:      "schema" = target keys checked against Rapid7's published schema
+#                "unverified" = keys inherited from upstream and not in a published schema
+#
+# Any Sigma field not listed for a source makes the rule fail conversion with a clear error,
+# instead of emitting a key that silently never matches.
+
+sources:
+
+  # ---------------------------------------------------------------- Process Start Event
+  - id: process_creation
+    description: Process creation (Insight Agent) for Windows, Linux and macOS
+    logsource:
+      - {category: process_creation, product: windows}
+      - {category: process_creation, product: linux}
+      - {category: process_creation, product: macos}
+    entry_type: process_start_event
+    log_set: Process Start Event
+    status: schema
+    fields:
+      ProcessId: process.pid
+      Image: process.exe_path
+      CommandLine: process.cmd_line
+      OriginalFileName: process.exe_file.orig_filename
+      FileVersion: process.exe_file.version
+      Description: process.exe_file.description
+      Product: process.exe_file.product_name
+      Company: process.exe_file.author
+      User: process.username
+      ParentProcessId: parent_process.pid
+      ParentImage: parent_process.exe_path
+      ParentCommandLine: parent_process.cmd_line
+      ParentUser: parent_process.username
+      md5: process.exe_file.hashes.md5
+      sha1: process.exe_file.hashes.sha1
+      sha256: process.exe_file.hashes.sha256
+      Imphash: process.exe_file.hashes.imphash
+      imphash: process.exe_file.hashes.imphash
+      Computer: hostname
+    # Sysmon-style "Hashes" values (e.g. Hashes|contains: 'SHA256=...') are split per algorithm
+    hashes:
+      MD5: process.exe_file.hashes.md5
+      SHA1: process.exe_file.hashes.sha1
+      SHA256: process.exe_file.hashes.sha256
+      IMPHASH: process.exe_file.hashes.imphash
+
+  # ---------------------------------------------------------------- DNS Query
+  - id: dns
+    description: DNS queries (Windows dns_query category and generic dns category)
+    logsource:
+      - {category: dns_query, product: windows}
+      - {category: dns}
+    entry_type: dns
+    log_set: DNS Query
+    status: schema
+    fields:
+      QueryName: query
+      query: query
+      record_type: query_type
+      Computer: asset
+      src_ip: source_address
+      src_port: source_port
+
+  # ---------------------------------------------------------------- Web Proxy Activity
+  - id: proxy
+    description: Web proxy logs
+    logsource:
+      - {category: proxy}
+    entry_type: web_proxy
+    log_set: Web Proxy Activity
+    status: schema
+    fields:
+      c-uri: url
+      c-uri-stem: url_path
+      c-uri-query: url_query
+      cs-host: url_host
+      r-dns: url_host
+      cs-method: http_method
+      c-useragent: user_agent
+      cs-bytes: incoming_bytes   # bytes received from the client
+      sc-bytes: outgoing_bytes   # bytes sent to the client
+      src_ip: source_ip
+      c-ip: source_ip
+      dst_ip: destination_ip
+
+  # ---------------------------------------------------------------- Firewall Activity
+  - id: firewall
+    description: Firewall logs
+    logsource:
+      - {category: firewall}
+    entry_type: firewall
+    log_set: Firewall Activity
+    status: schema
+    fields:
+      src_ip: source_address
+      src_port: source_port
+      dst_ip: destination_address
+      dst_port: destination_port
+      username: user
+      action: connection_status
+    values:
+      # connection_status is an enum of ACCEPT / DENY
+      action:
+        allow: ACCEPT
+        allowed: ACCEPT
+        accept: ACCEPT
+        pass: ACCEPT
+        deny: DENY
+        denied: DENY
+        drop: DENY
+        dropped: DENY
+        block: DENY
+        blocked: DENY
+        reject: DENY
+
+  # ---------------------------------------------------------------- Ingress Authentication
+  - id: azure_signin
+    description: Azure AD / Entra ID sign-in logs
+    logsource:
+      - {product: azure, service: signinlogs}
+    entry_type: ingress_auth
+    log_set: Ingress Authentication
+    # source_json.* keys are the raw Azure payload and are not covered by Rapid7's schema.
+    status: unverified
+    fields:
+      Username: account
+      ResourceDisplayName: authentication_target
+      userAgent: user_agent
+      ResultType: source_json.resultType
+      ResultDescription: source_json.resultDescription
+      ActivityDetails: source_json.operationName
+      ClientApp: source_json.properties.appDisplayName
+      AuthenticationRequirement: source_json.properties.authenticationRequirement
+      status: source_json.properties.status
+      HomeTenantId: source_json.properties.homeTenantId
+      ResourceTenantId: source_json.properties.resourceTenantId
+      conditionalAccessStatus: source_json.properties.conditionalAccessStatus
+
+  # ---------------------------------------------------------------- Sysmon
+  # The sysmon event type keeps native Sysmon EventData names, which are the names Sigma uses.
+  - id: sysmon_network_connection
+    description: Sysmon EID 3 - network connection
+    logsource: [{category: network_connection, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: 3}
+    fields: &sysmon_common {Computer: hostname, EventID: event_id}
+    prefix: &sysmon_prefix event.EventData.Data.
+    passthrough: [DestinationHostname, DestinationIp, DestinationIsIpv6, DestinationPort, DestinationPortName,
+                  Image, Initiated, ProcessGuid, ProcessId, Protocol, RuleName, SourceHostname, SourceIp,
+                  SourceIsIpv6, SourcePort, SourcePortName, User, UtcTime]
+
+  - id: sysmon_process_termination
+    description: Sysmon EID 5 - process terminated
+    logsource: [{category: process_termination, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: 5}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [Image, ProcessGuid, ProcessId, RuleName, User, UtcTime]
+
+  - id: sysmon_driver_load
+    description: Sysmon EID 6 - driver loaded
+    logsource: [{category: driver_load, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: 6}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [Hashes, ImageLoaded, RuleName, Signature, SignatureStatus, Signed, UtcTime]
+
+  - id: sysmon_image_load
+    description: Sysmon EID 7 - image loaded
+    logsource: [{category: image_load, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: 7}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [Company, Description, FileVersion, Hashes, Image, ImageLoaded, OriginalFileName, ProcessGuid,
+                  ProcessId, Product, RuleName, Signature, SignatureStatus, Signed, User, UtcTime]
+
+  - id: sysmon_create_remote_thread
+    description: Sysmon EID 8 - CreateRemoteThread
+    logsource: [{category: create_remote_thread, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: 8}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [NewThreadId, RuleName, SourceImage, SourceProcessGuid, SourceProcessId, SourceUser, StartAddress,
+                  StartFunction, StartModule, TargetImage, TargetProcessGuid, TargetProcessId, TargetUser, UtcTime]
+
+  - id: sysmon_raw_access_thread
+    description: Sysmon EID 9 - raw access read
+    logsource: [{category: raw_access_thread, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: 9}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [Device, Image, ProcessGuid, ProcessId, RuleName, User, UtcTime]
+
+  - id: sysmon_process_access
+    description: Sysmon EID 10 - process access
+    logsource: [{category: process_access, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: 10}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [CallTrace, GrantedAccess, RuleName, SourceImage, SourceProcessGUID, SourceProcessId, SourceThreadId,
+                  SourceUser, TargetImage, TargetProcessGUID, TargetProcessId, TargetUser, UtcTime]
+
+  - id: sysmon_file_event
+    description: Sysmon EID 11 - file create
+    logsource: [{category: file_event, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: 11}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [CreationUtcTime, Image, ProcessGuid, ProcessId, RuleName, TargetFilename, User, UtcTime]
+
+  - id: sysmon_registry_add_delete
+    description: Sysmon EID 12 - registry key/value create or delete
+    logsource:
+      - {category: registry_add, product: windows}
+      - {category: registry_delete, product: windows}
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: 12}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [EventType, Image, ProcessGuid, ProcessId, RuleName, TargetObject, User, UtcTime]
+
+  - id: sysmon_registry_set
+    description: Sysmon EID 13 - registry value set
+    logsource: [{category: registry_set, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: 13}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [Details, EventType, Image, ProcessGuid, ProcessId, RuleName, TargetObject, User, UtcTime]
+
+  - id: sysmon_registry_rename
+    description: Sysmon EID 14 - registry key/value rename
+    logsource: [{category: registry_rename, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: 14}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [EventType, Image, NewName, ProcessGuid, ProcessId, RuleName, TargetObject, User, UtcTime]
+
+  - id: sysmon_registry_event
+    description: Sysmon EID 12/13/14 - any registry event
+    logsource: [{category: registry_event, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: [12, 13, 14]}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [Details, EventType, Image, NewName, ProcessGuid, ProcessId, RuleName, TargetObject, User, UtcTime]
+
+  - id: sysmon_create_stream_hash
+    description: Sysmon EID 15 - alternate data stream created
+    logsource: [{category: create_stream_hash, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: 15}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [CreationUtcTime, Hash, Image, ProcessGuid, ProcessId, RuleName, TargetFilename, User, UtcTime]
+
+  - id: sysmon_pipe_created
+    description: Sysmon EID 17/18 - named pipe created / connected
+    logsource: [{category: pipe_created, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: [17, 18]}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [EventType, Image, PipeName, ProcessGuid, ProcessId, RuleName, User, UtcTime]
+
+  - id: sysmon_wmi_event
+    description: Sysmon EID 19/20/21 - WMI filter / consumer / binding
+    logsource: [{category: wmi_event, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: [19, 20, 21]}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [Consumer, Destination, EventNamespace, EventType, Filter, Name, Operation, Query, RuleName, Type,
+                  User, UtcTime]
+
+  - id: sysmon_file_delete
+    description: Sysmon EID 23/26 - file delete (archived / detected)
+    logsource: [{category: file_delete, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: [23, 26]}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [Archived, Hashes, Image, IsExecutable, ProcessGuid, ProcessId, RuleName, TargetFilename, User,
+                  UtcTime]
+
+  - id: sysmon_file_change
+    description: Sysmon EID 2 - file creation time changed
+    logsource: [{category: file_change, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: 2}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [CreationUtcTime, Image, PreviousCreationUtcTime, ProcessGuid, ProcessId, RuleName, TargetFilename,
+                  User, UtcTime]
+
+  - id: sysmon_process_tampering
+    description: Sysmon EID 25 - process tampering
+    logsource: [{category: process_tampering, product: windows}]
+    entry_type: sysmon
+    log_set: Sysmon
+    status: schema
+    conditions: {event_id: 25}
+    fields: *sysmon_common
+    prefix: *sysmon_prefix
+    passthrough: [Image, ProcessGuid, ProcessId, RuleName, Type, User, UtcTime]

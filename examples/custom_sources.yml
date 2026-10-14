@@ -1,0 +1,40 @@
+# Template for adding or overriding log sources. Use with:
+#   sigma2leql convert rules/ --sources examples/custom_sources.yml
+#
+# How to fill one in:
+#   1. In InsightIDR Log Search, open a real event for the data you want and use the Entry
+#      Inspector (or "Copy as JSON") to see the exact key paths, e.g. source_json.EventData.ScriptBlockText.
+#   2. Map every Sigma field the relevant rules use to that key. Unmapped fields make a rule fail
+#      conversion on purpose (so you never get a query that silently never matches).
+#   3. Add `conditions` that select only the right events within the log set (event ID, type, ...).
+#   4. Run `sigma2leql convert <rules> --report report.csv` and test a few queries in Log Search.
+#
+# The entries below are EXAMPLES with placeholder keys; replace the keys with the ones you see in
+# your own tenant before relying on them.
+
+sources:
+
+  # Example: PowerShell Script Block Logging (EID 4104) collected as raw Windows event logs.
+  - id: powershell_script_block
+    description: PowerShell script block logging (EID 4104) - EXAMPLE, verify keys first
+    logsource:
+      - {product: windows, category: ps_script}
+    entry_type: raw                    # used only by the `detection` output format
+    log_set: Windows PowerShell        # whatever the log set is called in your tenant
+    status: unverified
+    conditions:
+      source_json.eventCode: 4104      # PLACEHOLDER key
+    fields:
+      ScriptBlockText: source_json.eventData.ScriptBlockText   # PLACEHOLDER key
+      Path: source_json.eventData.Path                         # PLACEHOLDER key
+
+  # Example: override a built-in source (same id replaces it), e.g. to add a field mapping.
+  # - id: dns
+  #   logsource: [{category: dns_query, product: windows}, {category: dns}]
+  #   entry_type: dns
+  #   log_set: DNS Query
+  #   fields: {QueryName: query, query: query, record_type: query_type, Computer: asset}
+
+  # Example: turn a built-in source off entirely.
+  # - id: azure_signin
+  #   disabled: true

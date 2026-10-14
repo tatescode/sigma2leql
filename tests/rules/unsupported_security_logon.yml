@@ -1,0 +1,12 @@
+title: Unsupported Example - Windows Security Log
+id: 00000000-0000-4000-8000-000000000002
+status: experimental
+level: low
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4624
+        LogonType: 10
+    condition: selection
