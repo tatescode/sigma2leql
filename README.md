@@ -21,12 +21,29 @@ Every rule that fails gets a stated reason.
 
 Requires Python 3.9+.
 
+**macOS / Linux (bash, zsh):**
+
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install "git+https://github.com/tatescode/sigma2leql.git"
 # or, from a clone:
 pip install -e ".[dev]"
 ```
+
+**Windows (PowerShell):**
+
+```powershell
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install "git+https://github.com/tatescode/sigma2leql.git"
+# or, from a clone:
+pip install -e ".[dev]"
+```
+
+If activation fails with *running scripts is disabled on this system*, run
+`Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned` and activate again. This only
+affects the current PowerShell window. Installing from the Git URL also needs
+[Git](https://git-scm.com/downloads) on your `PATH`.
 
 > **Version pins are deliberate.** `pysigma-backend-insightidr` 0.2.4 (the latest release) requires
 > `pysigma<0.12`, and pySigma 0.11 crashes on `pyparsing>=3.2` with `'str' object is not callable`.
